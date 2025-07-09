@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E-commerce API Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .section { margin-bottom: 20px; }
+    button { margin: 5px; padding: 8px 16px; }
+    input, select { margin: 5px; padding: 8px; }
+    #products, #cart, #orders { border: 1px solid #ddd; padding: 10px; }
+  </style>
+</head>
+<body>
+  <div class="section">
+    <h2>Auth</h2>
+    <input type="email" id="email" placeholder="Email">
+    <input type="password" id="password" placeholder="Password">
+    <select id="role">
+      <option value="customer">Customer</option>
+      <option value="admin">Admin</option>
+    </select>
+    <button onclick="register()">Register</button>
+    <button onclick="login()">Login</button>
+  </div>
+
+  <div class="section" id="adminSection" style="display: none;">
+    <h2>Admin: Add Product</h2>
+    <input type="text" id="productName" placeholder="Name">
+    <input type="text" id="productDescription" placeholder="Description">
+    <input type="number" id="productPrice" placeholder="Price">
+    <input type="text" id="productCategory" placeholder="Category">
+    <input type="number" id="productStock" placeholder="Stock">
+    <button onclick="addProduct()">Add Product</button>
+  </div>
+
+  <div class="section">
+    <h2>Products</h2>
+    <input type="text" id="search" placeholder="Search products">
+    <input type="text" id="category" placeholder="Category">
+    <button onclick="getProducts()">Search</button>
+    <div id="products"></div>
+  </div>
+
+  <div class="section">
+    <h2>Cart</h2>
+    <div id="cart"></div>
+  </div>
+
+  <div class="section">
+    <h2>Orders</h2>
+    <button onclick="getOrders()">View Orders (Admin)</button>
+    <div id="orders"></div>
+  </div>
+
+  <script>
+    let token = '';
+    let role = '';
+
+    async function register() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const role = document.getElementById('role').value;
+      
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, role })
+      });
+      alert(await response.json().then(data => data.message || data.error));
+    }
+
+    async function login() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await response.json();
+      if (data.token) {
+        token = data.token;
+        role = data.role;
+        document.getElementById('adminSection').style.display = role === 'admin' ? 'block' : 'none';
+        getProducts();
+        getCart();
+      }
+      alert(data.message || data.error);
+    }
+
+    async function getProducts() {
+      const search = document.getElementById('search').value;
+      const category = document.getElementById('category').value;
+      const response = await fetch(`/api/products?search=${search}&category=${category}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await response.json();
+      const productsDiv = document.getElementById('products');
+      productsDiv.innerHTML = data.products.map(p => `
+        <div>
+          ${p.name} - $${p.price} (${p.category})
+          ${role === 'admin' ? `<button onclick="deleteProduct('${p._id}')">Delete</button>` : ''}
+          ${role === 'customer' ? `<button onclick="addToCart('${p._id}')">Add to Cart</button>` : ''}
+        </div>
+      `).join('');
+    }
+
+    async function addProduct() {
+      const product = {
+        name: document.getElementById('productName').value,
+        description: document.getElementById('productDescription').value,
+        price: parseFloat(document.getElementById('productPrice').value),
+        category: document.getElementById('productCategory').value,
+        stock: parseInt(document.getElementById('productStock').value)
+      };
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(product)
+      });
+      alert(await response.json().then(data => data.message || data.error));
+      getProducts();
+    }
+
+    async function deleteProduct(id) {
+      const response = await fetch(`/api/products/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      alert(await response.json().then(data => data.message || data.error));
+      getProducts();
+    }
+
+    async function addToCart(productId) {
+      const response = await fetch('/api/cart/add', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ productId, quantity: 1 })
+      });
+      alert(await response.json().then(data => data.message || data.error));
+      getCart();
+    }
+
+    async function getCart() {
+      if (role !== 'customer') return;
+      const response = await fetch('/api/cart', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const cart = await response.json();
+      const cartDiv = document.getElementById('cart');
+      cartDiv.innerHTML = cart.items.map(item => `
+        <div>
+          ${item.productId.name} - Quantity: ${item.quantity}
+          <button onclick="updateCart('${item.productId._id}', ${item.quantity + 1})">+1</button>
+          <button onclick="updateCart('${item.productId._id}', ${item.quantity - 1})">-1</button>
+          <button onclick="removeFromCart('${item.productId._id}')">Remove</button>
+        </div>
+      `).join('');
+      if (cart.items.length > 0) {
+        cartDiv.innerHTML += '<button onclick="createOrder()">Create Order</button>';
+      }
+    }
+
+    async function updateCart(productId, quantity) {
+      if (quantity < 1) return removeFromCart(productId);
+      const response = await fetch('/api/cart/update', {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ productId, quantity })
+      });
+      alert(await response.json().then(data => data.message || data.error));
+      getCart();
+    }
+
+    async function removeFromCart(productId) {
+      const response = await fetch(`/api/cart/remove/${productId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      alert(await response.json().then(data => data.message || data.error));
+      getCart();
+    }
+
+    async function createOrder() {
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      alert(await response.json().then(data => data.message || data.error));
+      getCart();
+    }
+
+    async function getOrders() {
+      if (role !== 'admin') return alert('Admin only');
+      const response = await fetch('/api/orders', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const orders = await response.json();
+      const ordersDiv = document.getElementById('orders');
+      ordersDiv.innerHTML = orders.map(o => `
+        <div>
+          Order #${o._id} - Total: $${o.total} - Status: ${o.status}
+          Items: ${o.items.map(i => `${i.productId.name} x${i.quantity}`).join(', ')}
+        </div>
+      `).join('');
+    }
+  </script>
+</body>
+</html>
