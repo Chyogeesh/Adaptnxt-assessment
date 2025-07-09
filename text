@@ -1,0 +1,21 @@
+ecommerce-api/
+├── api/
+│   ├── index.js
+├── models/
+│   ├── User.js
+│   ├── Product.js
+│   ├── Cart.js
+│   ├── Order.js
+├── routes/
+│   ├── auth.js
+│   ├── products.js
+│   ├── cart.js
+│   ├── orders.js
+├── middleware/
+│   ├── authMiddleware.js
+├── public/
+│   ├── index.html
+├── package.json
+├── vercel.json
+├── .env.example
+└── README.md
